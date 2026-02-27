@@ -1,176 +1,288 @@
-</script>
-
-<script src="[https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js](https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js)"></script>
-
-<style>
-    /* A simple CSS trick to create a deep ocean background gradient */
-    body {
-        background: linear-gradient(135deg, #020617 0%, #0f172a 100%);
-        color: #f8fafc;
-        min-height: 100vh;
-    }
-    /* Glass panel effect for our dashboard cards */
-    .glass-panel {
-        background: rgba(30, 41, 59, 0.5);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 1rem;
-    }
-</style>
-</head>
-<body class="p-4 md:p-8 font-sans">
-
-<header class="mb-8">
-    <h1 class="text-4xl font-bold text-blue-400 tracking-tight">Project Deep Blue</h1>
-    <p class="text-slate-400 mt-2">Real-Time Ocean Acidification Buoy Telemetry</p>
-</header>
-
-<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OceanData | Live Buoy Telemetry</title>
     
-    <div class="glass-panel p-6 flex flex-col items-center justify-center">
-        <h2 class="text-xl font-semibold mb-4 text-slate-200">Current pH</h2>
-        <div id="ph-gauge" style="width: 100%; height: 250px;"></div>
-    </div>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
 
-    <div class="glass-panel p-6 flex flex-col items-center justify-center">
-        <h2 class="text-xl font-semibold mb-4 text-slate-200">Water Temp (°C)</h2>
-        <div id="temp-gauge" style="width: 100%; height: 250px;"></div>
-    </div>
-
-    <div class="glass-panel p-6 flex flex-col">
-        <h2 class="text-xl font-semibold mb-4 text-emerald-400 flex items-center">
-            ✨ AI Insight Analysis
-        </h2>
-        <div id="ai-text" class="text-slate-300 leading-relaxed text-sm">
-            Waiting for next environmental analysis cycle...
-        </div>
-        <p class="mt-auto pt-4 text-xs text-slate-500">Updated hourly via GitHub Actions.</p>
-    </div>
-
-    <div class="glass-panel p-6 col-span-1 md:col-span-3">
-        <h2 class="text-xl font-semibold mb-4 text-slate-200">24-Hour Acidification Trend</h2>
-        <div id="trend-chart" style="width: 100%; height: 350px;"></div>
-    </div>
-</div>
-
-<script>
-    // --- 1. CONFIGURATION ---
-    // Replace this with your actual ThingSpeak Channel ID
-    const THINGSPEAK_CHANNEL_ID = 'YOUR_CHANNEL_ID'; 
-    
-    // The URL to fetch the last 15 data points. 
-    // Field 1 = pH, Field 2 = Temperature (adjust based on your buoy setup)
-    const THINGSPEAK_URL = `https://api.thingspeak.com/channels/${THINGSPEAK_CHANNEL_ID}/feeds.json?results=15`;
-
-    // --- 2. INITIALIZE ECHARTS ---
-    // Tell ECharts to draw inside the empty <div> tags we made above
-    const phGauge = echarts.init(document.getElementById('ph-gauge'), 'dark');
-    const tempGauge = echarts.init(document.getElementById('temp-gauge'), 'dark');
-    const trendChart = echarts.init(document.getElementById('trend-chart'), 'dark');
-
-    // Setup the visual styles for the gauges (Clean and modern)
-    const gaugeOption = (name, min, max, color) => ({
-        backgroundColor: 'transparent',
-        series: [{
-            type: 'gauge',
-            min: min, max: max,
-            progress: { show: true, width: 12, itemStyle: { color: color } },
-            axisLine: { lineStyle: { width: 12 } },
-            axisTick: { show: false },
-            splitLine: { show: false },
-            pointer: { length: '60%', width: 5 },
-            detail: { valueAnimation: true, fontSize: 30, color: 'inherit' },
-            data: [{ value: 0, name: name }]
-        }]
-    });
-
-    // Setup the visual style for the Line Chart
-    const lineOption = {
-        backgroundColor: 'transparent',
-        tooltip: { trigger: 'axis' },
-        xAxis: { type: 'category', data: [], axisLabel: { color: '#94a3b8' } },
-        yAxis: { type: 'value', min: 6.5, max: 8.5, splitLine: { lineStyle: { color: '#334155' } } },
-        series: [{
-            data: [], type: 'line', smooth: true, 
-            lineStyle: { color: '#3b82f6', width: 4 },
-            areaStyle: {
-                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                    { offset: 0, color: 'rgba(59, 130, 246, 0.5)' },
-                    { offset: 1, color: 'rgba(59, 130, 246, 0)' }
-                ])
+    <script>
+        // Customizing Tailwind theme for our deep ocean vibe
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        ocean: { 900: '#011222', 800: '#021e38', 500: '#0ea5e9' }
+                    }
+                }
             }
-        }]
-    };
-
-    // Apply initial empty styles
-    phGauge.setOption(gaugeOption('pH', 6.0, 9.0, '#3b82f6'));
-    tempGauge.setOption(gaugeOption('°C', 0, 40, '#f59e0b'));
-    trendChart.setOption(lineOption);
-
-    // --- 3. THE FETCH API LOGIC (REAL-TIME UPDATES) ---
-    async function fetchBuoyData() {
-        try {
-            // The browser reaches out to ThingSpeak
-            const response = await fetch(THINGSPEAK_URL);
-            const data = await response.json();
-
-            // Extract the most recent reading for the gauges
-            const latestFeed = data.feeds[data.feeds.length - 1];
-            const latestPH = parseFloat(latestFeed.field1);
-            const latestTemp = parseFloat(latestFeed.field2);
-
-            // Update Gauges seamlessly (ECharts animates this automatically)
-            phGauge.setOption({ series: [{ data: [{ value: latestPH, name: 'pH' }] }] });
-            tempGauge.setOption({ series: [{ data: [{ value: latestTemp, name: '°C' }] }] });
-
-            // Prepare data arrays for the line chart
-            const times = data.feeds.map(feed => {
-                const date = new Date(feed.created_at);
-                return `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
-            });
-            const phValues = data.feeds.map(feed => parseFloat(field1));
-
-            // Update Line Chart seamlessly
-            trendChart.setOption({
-                xAxis: { data: times },
-                series: [{ data: phValues }]
-            });
-
-        } catch (error) {
-            console.error("Error fetching ThingSpeak data:", error);
         }
-    }
+    </script>
 
-    // --- 4. FETCH AI DATA (STATIC SECURE METHOD) ---
-    // This fetches the JSON file generated secretly by your GitHub Actions
-    async function fetchAIInsights() {
-        try {
-            // In a real scenario, this fetches a file from your own repo
-            // const response = await fetch('ai_summary.json'); 
-            // const aiData = await response.json();
-            // document.getElementById('ai-text').innerText = aiData.summary;
+    <style>
+        /* Deep water radial gradient background */
+        body {
+            background: radial-gradient(circle at top, #021e38 0%, #010a14 100%);
+            color: #e2e8f0;
+            min-height: 100vh;
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+        
+        /* The separated, individual box styling */
+        .glass-card {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 1.25rem;
+            box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
+            transition: all 0.3s ease;
+        }
+        
+        /* Interactable hover effect for the boxes */
+        .glass-card:hover {
+            border-color: rgba(14, 165, 233, 0.3);
+            transform: translateY(-4px);
+            box-shadow: 0 20px 40px -10px rgba(14, 165, 233, 0.15);
+        }
+
+        /* Smooth pulsing animation for the "Live" indicator */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        .live-indicator {
+            animation: pulse-ring 2s infinite;
+        }
+    </style>
+</head>
+<body class="flex flex-col">
+
+    <nav class="glass-card m-4 md:m-6 p-4 flex justify-between items-center rounded-2xl sticky top-4 z-50">
+        <div class="flex items-center gap-3">
+            <i data-lucide="waves" class="text-ocean-500 w-8 h-8"></i>
+            <div>
+                <h1 class="text-xl font-bold tracking-wide text-white">OceanData</h1>
+                <p class="text-xs text-slate-400">Buoy Station Alpha - Pacific</p>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-4">
+            <div class="hidden md:flex items-center gap-2 text-sm text-slate-300 bg-slate-800/50 px-3 py-1.5 rounded-full border border-slate-700">
+                <div class="w-2 h-2 rounded-full bg-emerald-500 live-indicator"></div>
+                Live Polling
+            </div>
+            <button onclick="manualRefresh()" id="refresh-btn" class="bg-ocean-500 hover:bg-ocean-400 text-white p-2 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium">
+                <i data-lucide="refresh-cw" class="w-4 h-4" id="refresh-icon"></i>
+                <span class="hidden md:inline">Refresh Data</span>
+            </button>
+        </div>
+    </nav>
+
+    <main class="flex-1 p-4 md:p-6 max-w-7xl w-full mx-auto space-y-6">
+        
+        <div class="flex justify-between items-end px-2">
+            <h2 class="text-2xl font-semibold text-white">Current Conditions</h2>
+            <p class="text-sm text-slate-400" id="last-updated">Last updated: --:--</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             
-            // Placeholder text for now:
-            document.getElementById('ai-text').innerText = 
-                "Based on the last 24 hours, pH levels remain stable at 8.1. No immediate indicators of acute acidification events detected in this sector. Temperature correlations are nominal.";
-        } catch (error) {
-            console.error("No AI data found yet.");
+            <div class="glass-card p-6 flex flex-col items-center relative overflow-hidden group">
+                <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-ocean-500">
+                    <i data-lucide="droplet" class="w-16 h-16"></i>
+                </div>
+                <h3 class="text-sm font-medium text-slate-400 mb-2 uppercase tracking-wider">Acidity (pH)</h3>
+                <div id="ph-gauge" class="w-full h-48"></div>
+            </div>
+
+            <div class="glass-card p-6 flex flex-col items-center relative overflow-hidden group">
+                <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-orange-500">
+                    <i data-lucide="thermometer" class="w-16 h-16"></i>
+                </div>
+                <h3 class="text-sm font-medium text-slate-400 mb-2 uppercase tracking-wider">Water Temp</h3>
+                <div id="temp-gauge" class="w-full h-48"></div>
+            </div>
+
+            <div class="glass-card p-6 flex flex-col h-full border-t-4 border-t-emerald-500">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-medium text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="cpu" class="w-4 h-4"></i> AI Analysis
+                    </h3>
+                    <span class="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-1 rounded-full border border-emerald-500/30">Secure Sync</span>
+                </div>
+                <p id="ai-text" class="text-slate-300 text-sm leading-relaxed flex-1">
+                    Connecting to secure data stream for environmental analysis...
+                </p>
+                <div class="mt-4 pt-4 border-t border-slate-700/50 flex items-center gap-2 text-xs text-slate-500">
+                    <i data-lucide="shield-check" class="w-3 h-3"></i> Output processed via GitHub Actions
+                </div>
+            </div>
+        </div>
+
+        <div class="glass-card p-6 w-full">
+            <div class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+                <div>
+                    <h3 class="text-lg font-medium text-white">24-Hour Environmental Trends</h3>
+                    <p class="text-sm text-slate-400">Monitoring pH variations over time.</p>
+                </div>
+                <div class="flex bg-slate-800/50 rounded-lg p-1 border border-slate-700">
+                    <button class="px-4 py-1.5 text-sm rounded-md bg-ocean-500 text-white shadow">1H</button>
+                    <button class="px-4 py-1.5 text-sm rounded-md text-slate-400 hover:text-white transition-colors">24H</button>
+                    <button class="px-4 py-1.5 text-sm rounded-md text-slate-400 hover:text-white transition-colors">7D</button>
+                </div>
+            </div>
+            <div id="trend-chart" class="w-full h-72"></div>
+        </div>
+
+    </main>
+
+    <script>
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        // --- Configuration ---
+        const THINGSPEAK_CHANNEL_ID = 'YOUR_CHANNEL_ID'; 
+        const THINGSPEAK_URL = `https://api.thingspeak.com/channels/${THINGSPEAK_CHANNEL_ID}/feeds.json?results=20`;
+
+        // --- Initialize ECharts ---
+        const phGauge = echarts.init(document.getElementById('ph-gauge'));
+        const tempGauge = echarts.init(document.getElementById('temp-gauge'));
+        const trendChart = echarts.init(document.getElementById('trend-chart'));
+
+        // Shared modern gauge styling
+        const getGaugeOption = (name, min, max, color) => ({
+            series: [{
+                type: 'gauge',
+                min: min, max: max,
+                axisLine: { lineStyle: { width: 10, color: [[1, 'rgba(255,255,255,0.1)']] } },
+                progress: { show: true, width: 10, itemStyle: { color: color } },
+                pointer: { show: false }, // Hide the old-school needle
+                axisTick: { show: false },
+                splitLine: { show: false },
+                axisLabel: { show: false },
+                title: { offsetCenter: [0, '20%'], textStyle: { color: '#94a3b8', fontSize: 14 } },
+                detail: { 
+                    valueAnimation: true, 
+                    offsetCenter: [0, '-10%'], 
+                    textStyle: { fontSize: 36, fontWeight: 'bold', color: '#f8fafc' },
+                    formatter: '{value}'
+                },
+                data: [{ value: 0, name: name }]
+            }]
+        });
+
+        // Modern Line Chart Styling
+        const lineOption = {
+            tooltip: { 
+                trigger: 'axis',
+                backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                borderColor: '#334155',
+                textStyle: { color: '#f8fafc' }
+            },
+            grid: { left: '3%', right: '4%', bottom: '3%', top: '5%', containLabel: true },
+            xAxis: { 
+                type: 'category', 
+                data: [], 
+                axisLabel: { color: '#64748b' },
+                axisLine: { lineStyle: { color: '#334155' } }
+            },
+            yAxis: { 
+                type: 'value', 
+                min: 'dataMin', // Dynamically scale to the data
+                splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } },
+                axisLabel: { color: '#64748b' }
+            },
+            series: [{
+                data: [], 
+                type: 'line', 
+                smooth: 0.4, 
+                symbol: 'circle',
+                symbolSize: 6,
+                itemStyle: { color: '#0ea5e9' },
+                lineStyle: { width: 3, shadowColor: 'rgba(14,165,233,0.3)', shadowBlur: 10 },
+                areaStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: 'rgba(14, 165, 233, 0.3)' },
+                        { offset: 1, color: 'rgba(14, 165, 233, 0)' }
+                    ])
+                }
+            }]
+        };
+
+        phGauge.setOption(getGaugeOption('pH', 0, 14, '#0ea5e9'));
+        tempGauge.setOption(getGaugeOption('°C', 0, 40, '#f97316'));
+        trendChart.setOption(lineOption);
+
+        // --- Fetch Logic & Interactables ---
+        async function fetchBuoyData() {
+            try {
+                // If you don't have a ThingSpeak ID yet, we use mock data so you can see how it looks
+                if(THINGSPEAK_CHANNEL_ID === 'YOUR_CHANNEL_ID') {
+                    simulateData();
+                    return;
+                }
+
+                const response = await fetch(THINGSPEAK_URL);
+                const data = await response.json();
+                
+                const latestFeed = data.feeds[data.feeds.length - 1];
+                updateDashboards(latestFeed.field1, latestFeed.field2, data.feeds);
+
+            } catch (error) {
+                console.error("Error fetching data:", error);
+            }
         }
-    }
 
-    // --- 5. START THE LOOP ---
-    fetchBuoyData(); // Run once immediately
-    fetchAIInsights(); // Fetch the latest AI report
+        function updateDashboards(ph, temp, feedArray) {
+            phGauge.setOption({ series: [{ data: [{ value: parseFloat(ph).toFixed(2), name: 'pH' }] }] });
+            tempGauge.setOption({ series: [{ data: [{ value: parseFloat(temp).toFixed(1), name: '°C' }] }] });
 
-    // Short Polling: Run fetchBuoyData every 15 seconds (15000 milliseconds)
-    setInterval(fetchBuoyData, 15000); 
+            const times = feedArray.map(f => new Date(f.created_at || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
+            const phValues = feedArray.map(f => parseFloat(f.field1 || f.ph));
 
-    // Make charts resize if the user rotates their phone or shrinks the window
-    window.addEventListener('resize', () => {
-        phGauge.resize();
-        tempGauge.resize();
-        trendChart.resize();
-    });
-</script>
+            trendChart.setOption({ xAxis: { data: times }, series: [{ data: phValues }] });
+            
+            document.getElementById('last-updated').innerText = `Last updated: ${new Date().toLocaleTimeString()}`;
+        }
+
+        // --- Interactive Manual Refresh ---
+        function manualRefresh() {
+            const icon = document.getElementById('refresh-icon');
+            icon.classList.add('animate-spin'); // Make button spin visually
+            
+            fetchBuoyData().then(() => {
+                setTimeout(() => icon.classList.remove('animate-spin'), 500); // Stop spin after fetch
+            });
+        }
+
+        // --- Mock Data Generator (so you can see it working right away) ---
+        function simulateData() {
+            const mockFeeds = [];
+            let basePh = 8.1;
+            for(let i=0; i<20; i++) {
+                mockFeeds.push({
+                    created_at: new Date(Date.now() - (20-i)*60000),
+                    field1: (basePh + (Math.random() * 0.1 - 0.05)).toString(), // Wiggle pH
+                    field2: (18.5 + (Math.random() * 0.5)).toString() // Wiggle Temp
+                });
+            }
+            updateDashboards(mockFeeds[19].field1, mockFeeds[19].field2, mockFeeds);
+            document.getElementById('ai-text').innerHTML = "<strong>Simulated Analysis:</strong> Current pH levels are within historical norms (8.05 - 8.15). No immediate ocean acidification anomalies detected in the upper water column.";
+        }
+
+        // Start the engine
+        fetchBuoyData();
+        setInterval(fetchBuoyData, 15000); // Poll every 15s
+
+        // Keep charts responsive on window resize
+        window.addEventListener('resize', () => {
+            phGauge.resize(); tempGauge.resize(); trendChart.resize();
+        });
+    </script>
 </body>
 </html>
