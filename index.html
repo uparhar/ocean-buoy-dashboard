@@ -1,0 +1,176 @@
+</script>
+
+<script src="[https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js](https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js)"></script>
+
+<style>
+    /* A simple CSS trick to create a deep ocean background gradient */
+    body {
+        background: linear-gradient(135deg, #020617 0%, #0f172a 100%);
+        color: #f8fafc;
+        min-height: 100vh;
+    }
+    /* Glass panel effect for our dashboard cards */
+    .glass-panel {
+        background: rgba(30, 41, 59, 0.5);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 1rem;
+    }
+</style>
+</head>
+<body class="p-4 md:p-8 font-sans">
+
+<header class="mb-8">
+    <h1 class="text-4xl font-bold text-blue-400 tracking-tight">Project Deep Blue</h1>
+    <p class="text-slate-400 mt-2">Real-Time Ocean Acidification Buoy Telemetry</p>
+</header>
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    
+    <div class="glass-panel p-6 flex flex-col items-center justify-center">
+        <h2 class="text-xl font-semibold mb-4 text-slate-200">Current pH</h2>
+        <div id="ph-gauge" style="width: 100%; height: 250px;"></div>
+    </div>
+
+    <div class="glass-panel p-6 flex flex-col items-center justify-center">
+        <h2 class="text-xl font-semibold mb-4 text-slate-200">Water Temp (°C)</h2>
+        <div id="temp-gauge" style="width: 100%; height: 250px;"></div>
+    </div>
+
+    <div class="glass-panel p-6 flex flex-col">
+        <h2 class="text-xl font-semibold mb-4 text-emerald-400 flex items-center">
+            ✨ AI Insight Analysis
+        </h2>
+        <div id="ai-text" class="text-slate-300 leading-relaxed text-sm">
+            Waiting for next environmental analysis cycle...
+        </div>
+        <p class="mt-auto pt-4 text-xs text-slate-500">Updated hourly via GitHub Actions.</p>
+    </div>
+
+    <div class="glass-panel p-6 col-span-1 md:col-span-3">
+        <h2 class="text-xl font-semibold mb-4 text-slate-200">24-Hour Acidification Trend</h2>
+        <div id="trend-chart" style="width: 100%; height: 350px;"></div>
+    </div>
+</div>
+
+<script>
+    // --- 1. CONFIGURATION ---
+    // Replace this with your actual ThingSpeak Channel ID
+    const THINGSPEAK_CHANNEL_ID = 'YOUR_CHANNEL_ID'; 
+    
+    // The URL to fetch the last 15 data points. 
+    // Field 1 = pH, Field 2 = Temperature (adjust based on your buoy setup)
+    const THINGSPEAK_URL = `https://api.thingspeak.com/channels/${THINGSPEAK_CHANNEL_ID}/feeds.json?results=15`;
+
+    // --- 2. INITIALIZE ECHARTS ---
+    // Tell ECharts to draw inside the empty <div> tags we made above
+    const phGauge = echarts.init(document.getElementById('ph-gauge'), 'dark');
+    const tempGauge = echarts.init(document.getElementById('temp-gauge'), 'dark');
+    const trendChart = echarts.init(document.getElementById('trend-chart'), 'dark');
+
+    // Setup the visual styles for the gauges (Clean and modern)
+    const gaugeOption = (name, min, max, color) => ({
+        backgroundColor: 'transparent',
+        series: [{
+            type: 'gauge',
+            min: min, max: max,
+            progress: { show: true, width: 12, itemStyle: { color: color } },
+            axisLine: { lineStyle: { width: 12 } },
+            axisTick: { show: false },
+            splitLine: { show: false },
+            pointer: { length: '60%', width: 5 },
+            detail: { valueAnimation: true, fontSize: 30, color: 'inherit' },
+            data: [{ value: 0, name: name }]
+        }]
+    });
+
+    // Setup the visual style for the Line Chart
+    const lineOption = {
+        backgroundColor: 'transparent',
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: [], axisLabel: { color: '#94a3b8' } },
+        yAxis: { type: 'value', min: 6.5, max: 8.5, splitLine: { lineStyle: { color: '#334155' } } },
+        series: [{
+            data: [], type: 'line', smooth: true, 
+            lineStyle: { color: '#3b82f6', width: 4 },
+            areaStyle: {
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                    { offset: 0, color: 'rgba(59, 130, 246, 0.5)' },
+                    { offset: 1, color: 'rgba(59, 130, 246, 0)' }
+                ])
+            }
+        }]
+    };
+
+    // Apply initial empty styles
+    phGauge.setOption(gaugeOption('pH', 6.0, 9.0, '#3b82f6'));
+    tempGauge.setOption(gaugeOption('°C', 0, 40, '#f59e0b'));
+    trendChart.setOption(lineOption);
+
+    // --- 3. THE FETCH API LOGIC (REAL-TIME UPDATES) ---
+    async function fetchBuoyData() {
+        try {
+            // The browser reaches out to ThingSpeak
+            const response = await fetch(THINGSPEAK_URL);
+            const data = await response.json();
+
+            // Extract the most recent reading for the gauges
+            const latestFeed = data.feeds[data.feeds.length - 1];
+            const latestPH = parseFloat(latestFeed.field1);
+            const latestTemp = parseFloat(latestFeed.field2);
+
+            // Update Gauges seamlessly (ECharts animates this automatically)
+            phGauge.setOption({ series: [{ data: [{ value: latestPH, name: 'pH' }] }] });
+            tempGauge.setOption({ series: [{ data: [{ value: latestTemp, name: '°C' }] }] });
+
+            // Prepare data arrays for the line chart
+            const times = data.feeds.map(feed => {
+                const date = new Date(feed.created_at);
+                return `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+            });
+            const phValues = data.feeds.map(feed => parseFloat(field1));
+
+            // Update Line Chart seamlessly
+            trendChart.setOption({
+                xAxis: { data: times },
+                series: [{ data: phValues }]
+            });
+
+        } catch (error) {
+            console.error("Error fetching ThingSpeak data:", error);
+        }
+    }
+
+    // --- 4. FETCH AI DATA (STATIC SECURE METHOD) ---
+    // This fetches the JSON file generated secretly by your GitHub Actions
+    async function fetchAIInsights() {
+        try {
+            // In a real scenario, this fetches a file from your own repo
+            // const response = await fetch('ai_summary.json'); 
+            // const aiData = await response.json();
+            // document.getElementById('ai-text').innerText = aiData.summary;
+            
+            // Placeholder text for now:
+            document.getElementById('ai-text').innerText = 
+                "Based on the last 24 hours, pH levels remain stable at 8.1. No immediate indicators of acute acidification events detected in this sector. Temperature correlations are nominal.";
+        } catch (error) {
+            console.error("No AI data found yet.");
+        }
+    }
+
+    // --- 5. START THE LOOP ---
+    fetchBuoyData(); // Run once immediately
+    fetchAIInsights(); // Fetch the latest AI report
+
+    // Short Polling: Run fetchBuoyData every 15 seconds (15000 milliseconds)
+    setInterval(fetchBuoyData, 15000); 
+
+    // Make charts resize if the user rotates their phone or shrinks the window
+    window.addEventListener('resize', () => {
+        phGauge.resize();
+        tempGauge.resize();
+        trendChart.resize();
+    });
+</script>
+</body>
+</html>
